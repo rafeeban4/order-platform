@@ -18,5 +18,13 @@
 ### Status end of 2026-07-05 session
 
 - Skeleton compiles green (`gradlew build -x test`): ingest-api (POST /orders -> ULID -> Kafka 202) + order-worker (idempotent ON CONFLICT upsert). foojay resolver auto-provisions JDK 21 (machine has 25).
-- **BLOCKER for E2E: Docker is not installed** � docker-compose.yml (Redpanda + Postgres) can't run. Install Docker Desktop (WSL2 backend), then: `docker compose up -d` then run both apps and `curl -X POST localhost:8081/orders` with a JSON body, verify row in Postgres (port 5433, orders/orders_local_dev).
+- ~~BLOCKER: Docker not installed~~ — resolved same day, owner installed Docker Desktop.
+
+### 2026-07-05 (later) — M1 COMPLETE: pipeline verified end-to-end
+
+- Docker engine 29.6.1. `docker compose up -d` → Redpanda + Postgres healthy; created `orders.v1` with 3 partitions (`rpk topic create orders.v1 --partitions 3` — note: topic creation is manual for now, consider auto-create or init container).
+- Both services boot via `gradlew :ingest-api:bootRun` / `:order-worker:bootRun`.
+- **E2E verified:** POST /orders → 202 `{"id":"01KWT4DV8ZBC4GGN787KD0B13B","status":"accepted"}` → row appeared in Postgres (`new`, 2997 cents) via the Kafka worker.
+- **Burst test:** 200 sequential POSTs accepted, all 200 persisted, `count(*) == count(DISTINCT id)` — no loss, no dupes.
+- Next: M2 per DESIGN.md — OpenTelemetry traces across ingest → broker → worker → DB, Prometheus metrics, consumer-lag visibility. Then M3 chaos (kill worker mid-burst) + k6.
 
