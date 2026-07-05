@@ -28,3 +28,12 @@
 - **Burst test:** 200 sequential POSTs accepted, all 200 persisted, `count(*) == count(DISTINCT id)` — no loss, no dupes.
 - Next: M2 per DESIGN.md — OpenTelemetry traces across ingest → broker → worker → DB, Prometheus metrics, consumer-lag visibility. Then M3 chaos (kill worker mid-burst) + k6.
 
+### 2026-07-05 (night) — M2 COMPLETE: observability verified
+
+- Deps: micrometer-tracing-bridge-otel + otlp exporter + prometheus registry (both services); datasource-micrometer (worker, JDBC spans). Kafka observation enabled via `spring.kafka.template.observation-enabled` (producer) and `spring.kafka.listener.observation-enabled` (consumer) — that's what links the trace across the broker.
+- Compose additions: Tempo 2.6.1 (OTLP :4318/:4317, API :3200, `user: root` for local volume perms), Prometheus v2.55.1 (scrapes host services via `host.docker.internal` + `extra_hosts: host-gateway`), Grafana 11.4 (:3000, anonymous admin, both datasources provisioned).
+- **Verified cross-service trace in Tempo:** single trace containing `http post /orders` → `orders.v1 send` (ingest-api) → `orders.v1 receive` → JDBC `connection`/`query` (order-worker). TraceQL used: `{ resource.service.name = "ingest-api" && name != "http get /actuator/prometheus" }`.
+- **Verified Prometheus:** both targets `up`; `http_server_requests_seconds_*` histograms and `kafka_consumer_fetch_manager_*` metrics flowing.
+- Sampling at 1.0 for dev — MUST drop (0.05–0.1) before k6 runs or tracing overhead pollutes the load numbers.
+- Next: M3 — k6 scripts in `load/`, kill-worker-mid-burst chaos test, FAILURE_MODES.md, publish numbers.
+

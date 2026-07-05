@@ -1,0 +1,14 @@
+# Services run on the host during local dev; containers reach them via
+# host.docker.internal.
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: ingest-api
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8081"]
+  - job_name: order-worker
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["host.docker.internal:8082"]

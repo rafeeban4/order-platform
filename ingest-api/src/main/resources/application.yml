@@ -6,6 +6,8 @@ spring:
     name: ingest-api
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:19092}
+    template:
+      observation-enabled: true # producer spans, trace context into record headers
     producer:
       acks: all
       # linger a hair to batch under load without hurting p99 meaningfully
@@ -17,3 +19,9 @@ management:
     web:
       exposure:
         include: health,metrics,prometheus
+  tracing:
+    sampling:
+      probability: 1.0 # demo scale; drop for real load tests
+  otlp:
+    tracing:
+      endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}
