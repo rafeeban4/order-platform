@@ -1,0 +1,7 @@
+plugins {
+    // Auto-downloads the JDK 21 toolchain if the machine only has another version
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'order-platform'
+include 'ingest-api', 'order-worker'

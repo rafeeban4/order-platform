@@ -1,0 +1,19 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: ingest-api
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:19092}
+    producer:
+      acks: all
+      # linger a hair to batch under load without hurting p99 meaningfully
+      properties:
+        linger.ms: 5
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
