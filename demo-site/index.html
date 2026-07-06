@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>order-platform — replay demo</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --line:#2d333b; --text:#e6edf3; --dim:#8b949e; --accent:#e3b341; --ok:#3fb950; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:ui-monospace,Consolas,monospace; }
+  .banner { background:var(--panel); border-bottom:1px solid var(--line); padding:10px 24px; font-size:12px; color:var(--dim); line-height:1.5; }
+  .banner strong { color:var(--accent); font-weight:600; }
+  .banner a { color:var(--ok); text-decoration:none; }
+  .banner a:hover { text-decoration:underline; }
+  header { display:flex; justify-content:space-between; align-items:baseline; padding:16px 24px; border-bottom:1px solid var(--line); }
+  h1 { font-size:15px; margin:0; letter-spacing:.06em; }
+  #conn { font-size:12px; color:var(--ok); }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; padding:16px 24px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 16px; }
+  .stat .label { font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:var(--dim); }
+  .stat .value { font-size:26px; margin-top:4px; color:var(--accent); }
+  table { width:calc(100% - 48px); margin:8px 24px 24px; border-collapse:collapse; font-size:12.5px; }
+  th { text-align:left; color:var(--dim); font-weight:500; padding:6px 10px; border-bottom:1px solid var(--line); font-size:10px; text-transform:uppercase; letter-spacing:.1em; }
+  td { padding:6px 10px; border-bottom:1px solid var(--line); }
+  tr.fresh { animation: flash 1.2s ease-out; }
+  @keyframes flash { from { background:rgba(227,179,65,.25); } to { background:transparent; } }
+  td.total { text-align:right; color:var(--accent); }
+</style>
+</head>
+<body>
+<div class="banner">
+  <strong>Replay of a real load-test run.</strong>
+  The live pipeline (Spring Boot → Kafka/Redpanda → Postgres, OpenTelemetry-traced) runs locally — this page replays a bundled capture so the feed and counters animate exactly like the real dashboard.
+  Repo + numbers:
+  <a href="https://github.com/rafeeban4/order-platform" target="_blank" rel="noreferrer">github.com/rafeeban4/order-platform</a>
+  ·
+  <a href="https://github.com/rafeeban4/order-platform/blob/master/docs/FAILURE_MODES.md" target="_blank" rel="noreferrer">FAILURE_MODES.md</a>
+</div>
+<header>
+  <h1>ORDER-PLATFORM · LIVE FEED (REPLAY)</h1>
+  <span id="conn">● replaying</span>
+</header>
+<div class="stats">
+  <div class="stat"><div class="label">Orders (all time)</div><div class="value" id="s-total">–</div></div>
+  <div class="stat"><div class="label">Revenue (all time)</div><div class="value" id="s-rev">–</div></div>
+  <div class="stat"><div class="label">Last 60s</div><div class="value" id="s-min">–</div></div>
+  <div class="stat"><div class="label">Live this session</div><div class="value" id="s-live">0</div></div>
+</div>
+<table>
+  <thead><tr><th>ID</th><th>Store</th><th>Customer</th><th>Total</th></tr></thead>
+  <tbody id="feed"></tbody>
+</table>
+<script>
+const feed = document.getElementById("feed");
+const $ = (id) => document.getElementById(id);
+const money = (c) => "$" + (c / 100).toFixed(2);
+
+// Running "all time" figures seeded to the tail of a real ~410K-order load run,
+// so the replay reads as the dashboard picking up a run already in flight.
+let totalOrders = 412904;
+let totalCents = 5619473300;
+let live = 0;
+const recentTimes = []; // emit timestamps, for the rolling last-60s counter
+
+function row(o, fresh) {
+  const tr = document.createElement("tr");
+  if (fresh) tr.className = "fresh";
+  const name = o.customer_name ?? (o.customer && o.customer.name) ?? "";
+  const total = o.total_cents ?? o.totalCents ?? 0;
+  tr.innerHTML = `<td>${o.id}</td><td>${o.store_id ?? o.storeId}</td><td>${name}</td><td class="total">${money(total)}</td>`;
+  return tr;
+}
+
+function renderStats() {
+  const now = Date.now();
+  while (recentTimes.length && now - recentTimes[0] > 60000) recentTimes.shift();
+  $("s-total").textContent = totalOrders.toLocaleString();
+  $("s-rev").textContent = money(totalCents);
+  $("s-min").textContent = recentTimes.length.toLocaleString();
+  $("s-live").textContent = live.toLocaleString();
+}
+
+// Same DOM-update path as the live dashboard: a batch arrives, counters move,
+// a handful of rows flash in, the table stays capped.
+function ingestBatch(batch) {
+  const now = Date.now();
+  live += batch.length;
+  for (const o of batch) {
+    totalOrders += 1;
+    totalCents += (o.total_cents ?? o.totalCents ?? 0);
+    recentTimes.push(now);
+  }
+  for (const o of batch.slice(0, 5)) feed.prepend(row(o, true));
+  while (feed.children.length > 60) feed.lastChild.remove();
+  renderStats();
+}
+
+let orders = [];
+let cursor = 0;
+
+function nextBatch() {
+  const size = 3 + Math.floor(Math.random() * 6); // 3–8 orders per tick
+  const batch = [];
+  for (let i = 0; i < size; i++) {
+    const src = orders[cursor % orders.length];
+    cursor++;
+    // Fresh id each loop so a replayed order never looks like a duplicate.
+    batch.push({ ...src, id: src.id.slice(0, 3) + Math.random().toString(36).slice(2, 12).toUpperCase() });
+  }
+  return batch;
+}
+
+function tick() {
+  ingestBatch(nextBatch());
+  setTimeout(tick, 700 + Math.random() * 500); // ~1.1–1.4 bursts/sec
+}
+
+fetch("orders.json")
+  .then((r) => r.json())
+  .then((data) => {
+    orders = data;
+    // Backfill the feed with a first burst, then start the loop.
+    feed.replaceChildren(...nextBatch().map((o) => row(o, false)));
+    renderStats();
+    tick();
+  });
+</script>
+</body>
+</html>

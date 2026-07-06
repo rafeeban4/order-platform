@@ -7,6 +7,13 @@
       "runtimeArgs": ["/c", "gradlew.bat", ":order-worker:bootRun", "--console=plain"],
       "cwd": "C:\\Users\\Rafee\\Documents\\CLAUDE\\order-platform",
       "port": 8082
+    },
+    {
+      "name": "demo-site",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "-l", "5180", "demo-site"],
+      "cwd": "C:\\Users\\Rafee\\Documents\\CLAUDE\\order-platform",
+      "port": 5180
     }
   ]
 }
