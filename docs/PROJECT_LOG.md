@@ -38,7 +38,7 @@
 - Next: M3 â€” k6 scripts in `load/`, kill-worker-mid-burst chaos test, FAILURE_MODES.md, publish numbers.
 
 
-### 2026-07-05 (late) — M3 COMPLETE: load + chaos, numbers published
+### 2026-07-05 (late) - M3 COMPLETE: load + chaos, numbers published
 
 - Baseline k6 (ramp to 150 VUs, 60s): 410,067 orders accepted (~5,250/s), p99 7.2ms, 0.03% request failures; ALL 410,067 persisted, zero dupes, ~9.5 min drain.
 - Measured bottleneck: persistence ~400-650/s (single-row inserts) vs 5,250/s ingest. Next optimization: JDBC batch inserts in the worker.
