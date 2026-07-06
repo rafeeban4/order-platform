@@ -9,13 +9,20 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Consumes orders.v1 and persists idempotently. Delivery is at-least-once
- * (rebalances and retries can redeliver), so the insert is ON CONFLICT DO
- * NOTHING keyed on the ULID assigned at ingest — replaying a message is a
- * no-op instead of a duplicate row. That is the whole consistency story:
- * at-least-once delivery + idempotent writes, no exactly-once machinery.
+ * Consumes orders.v1 in batches and persists them with one JDBC batch
+ * statement per poll. Delivery is at-least-once (rebalances and retries
+ * redeliver whole batches), so every row is ON CONFLICT DO NOTHING keyed
+ * on the ULID assigned at ingest — replays are no-ops, never duplicates.
+ *
+ * Batching is the fix for the measured bottleneck: single-row inserts
+ * capped persistence at ~500 rows/s while ingest sustained ~5,250/s
+ * (see docs/FAILURE_MODES.md). One multi-row batch per poll amortizes
+ * the network round-trip and WAL sync across up to max-poll-records
+ * rows.
  */
 @Component
 public class OrderConsumer {
@@ -36,18 +43,27 @@ public class OrderConsumer {
         this.mapper = mapper;
     }
 
-    @KafkaListener(topics = "orders.v1", groupId = "order-workers")
-    public void onOrder(String message) throws Exception {
-        JsonNode event = mapper.readTree(message);
-        int updated = jdbc.update(UPSERT,
-                event.path("id").asText(),
-                event.path("storeId").asText(),
-                event.path("customer").toString(),
-                event.path("lines").toString(),
-                event.path("totalCents").asInt(),
-                OffsetDateTime.parse(event.path("createdAt").asText()));
-        if (updated == 0) {
-            log.info("duplicate delivery ignored: {}", event.path("id").asText());
+    @KafkaListener(topics = "orders.v1", groupId = "order-workers", batch = "true")
+    public void onOrders(List<String> messages) throws Exception {
+        List<Object[]> rows = new ArrayList<>(messages.size());
+        for (String message : messages) {
+            JsonNode event = mapper.readTree(message);
+            rows.add(new Object[] {
+                    event.path("id").asText(),
+                    event.path("storeId").asText(),
+                    event.path("customer").toString(),
+                    event.path("lines").toString(),
+                    event.path("totalCents").asInt(),
+                    OffsetDateTime.parse(event.path("createdAt").asText()),
+            });
+        }
+        int[] results = jdbc.batchUpdate(UPSERT, rows);
+        int duplicates = 0;
+        for (int r : results) {
+            if (r == 0) duplicates++;
+        }
+        if (duplicates > 0) {
+            log.info("batch of {}: {} duplicate deliveries ignored", rows.size(), duplicates);
         }
     }
 }

@@ -13,7 +13,23 @@ k6 ramp 0→150 VUs over 60s:
 | Failed requests | 0.03% (153 connection-level, during peak ramp) |
 | Persisted | **410,067 rows — count(*) == count(DISTINCT id)**, zero loss, zero duplicates |
 
-**Honest asymmetry:** ingest accepts ~5,250/s but the workers persist ~400–650/s (single-row inserts), so a 60s burst takes ~9.5 minutes to drain. That's the queue doing exactly its job — absorbing a spike the database can't take in real time — and it's the #1 optimization target (JDBC batch inserts; expected order-of-magnitude gain).
+**Honest asymmetry (v1, single-row inserts):** ingest accepted ~5,250/s but the workers persisted ~400–650/s, so a 60s burst took ~9.5 minutes to drain. That's the queue doing exactly its job — absorbing a spike the database can't take in real time — and it was the #1 optimization target.
+
+## Batching fix — before/after
+
+Change: batch `@KafkaListener` (up to `max-poll-records: 500` per poll) + one `jdbc.batchUpdate` per batch + `reWriteBatchedInserts=true` on the JDBC URL (the Postgres driver flattens the batch into multi-row INSERTs). Idempotency unchanged — every row is still `ON CONFLICT DO NOTHING`.
+
+Same k6 scenario rerun:
+
+| | v1 single-row | v2 batched |
+|---|---|---|
+| Orders accepted | 410,067 (~5,250/s) | 421,676 (~4,774/s) |
+| Ingest p95 | 5.7ms | 5.0ms |
+| Drain time after load ended | **~9.5 minutes** | **0 — already drained at first poll** |
+| Effective persistence rate | ~400–650 rows/s | keeps pace with ingest (≥4,800 rows/s) |
+| Loss / duplicates | 0 / 0 | 0 / 0 |
+
+~10× persistence throughput from ~30 lines of change, with the correctness properties intact. The lesson worth telling: the WAL-sync and network round-trip per statement was the cost, not Postgres itself.
 
 ## Worker killed mid-burst
 

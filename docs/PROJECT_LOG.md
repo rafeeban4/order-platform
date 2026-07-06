@@ -47,3 +47,10 @@
 - Full writeup: FAILURE_MODES.md (methodology + honest limits), README rewritten with measured numbers.
 - k6 quirk: exits 255 through the PS pipeline even on passing thresholds - check output, not exit code.
 - Remaining: broker-restart test (TODO in FAILURE_MODES), M4 dashboard, M5 Azure (citable cloud numbers), batch-insert optimization.
+
+### 2026-07-06 - batching optimization, verified ~10x
+
+- Worker moved to batch listener (batch=true on @KafkaListener, max-poll-records 500, fetch-min-size 64KB/fetch-max-wait 100ms) + jdbc.batchUpdate + reWriteBatchedInserts=true on the JDBC URL. Idempotency unchanged (per-row ON CONFLICT).
+- Same k6 baseline rerun: 421,676 orders accepted (~4,774/s), ingest p95 improved slightly, and persistence KEPT PACE with ingest - zero backlog at first poll after load ended (v1 needed ~9.5 min drain at ~500/s). Zero loss/dupes again.
+- Before/after table added to FAILURE_MODES.md; README updated. Note: batch listener means one consumer span per batch, not per record.
+- Remaining: broker-restart test, M4 dashboard, M5 Azure.

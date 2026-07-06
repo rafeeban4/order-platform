@@ -5,15 +5,20 @@ spring:
   application:
     name: order-worker
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5433/orders}
+    # reWriteBatchedInserts: driver flattens JDBC batches into multi-row
+    # INSERTs — the other half of the batching win.
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/orders?reWriteBatchedInserts=true}
     username: ${DB_USER:orders}
     password: ${DB_PASSWORD:orders_local_dev}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:19092}
     listener:
-      observation-enabled: true # consumer spans linked to the producer trace
+      observation-enabled: true # one consumer span per batch (per-record spans went with single-record mode)
     consumer:
       auto-offset-reset: earliest
+      max-poll-records: 500 # upper bound on JDBC batch size per poll
+      fetch-min-size: 64KB
+      fetch-max-wait: 100ms
 
 management:
   endpoints:
