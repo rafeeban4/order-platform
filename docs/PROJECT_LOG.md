@@ -37,3 +37,13 @@
 - Sampling at 1.0 for dev — MUST drop (0.05–0.1) before k6 runs or tracing overhead pollutes the load numbers.
 - Next: M3 — k6 scripts in `load/`, kill-worker-mid-burst chaos test, FAILURE_MODES.md, publish numbers.
 
+
+### 2026-07-05 (late) � M3 COMPLETE: load + chaos, numbers published
+
+- Baseline k6 (ramp to 150 VUs, 60s): 410,067 orders accepted (~5,250/s), p99 7.2ms, 0.03% request failures; ALL 410,067 persisted, zero dupes, ~9.5 min drain.
+- Measured bottleneck: persistence ~400-650/s (single-row inserts) vs 5,250/s ingest. Next optimization: JDBC batch inserts in the worker.
+- Chaos: 2 workers, 5 VUs x 60s (62,000 orders), worker 2 killed hard at t+20s -> group rebalanced to 1 member -> 62,000/62,000 rows, all distinct. Zero loss including in-flight redeliveries (idempotent upsert absorbed them).
+- Trace sampling env-overridable (TRACE_SAMPLING), ran loads at 0.05.
+- Full writeup: FAILURE_MODES.md (methodology + honest limits), README rewritten with measured numbers.
+- k6 quirk: exits 255 through the PS pipeline even on passing thresholds - check output, not exit code.
+- Remaining: broker-restart test (TODO in FAILURE_MODES), M4 dashboard, M5 Azure (citable cloud numbers), batch-insert optimization.

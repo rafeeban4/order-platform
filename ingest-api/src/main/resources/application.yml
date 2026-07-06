@@ -21,7 +21,7 @@ management:
         include: health,metrics,prometheus
   tracing:
     sampling:
-      probability: 1.0 # demo scale; drop for real load tests
+      probability: ${TRACE_SAMPLING:1.0} # drop to ~0.05 for load runs
   otlp:
     tracing:
       endpoint: ${OTLP_ENDPOINT:http://localhost:4318/v1/traces}
