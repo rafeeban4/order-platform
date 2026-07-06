@@ -43,9 +43,20 @@ Observed:
 
 Why this works (the design, not luck): offsets are committed after processing (at-least-once), so a crash can only cause *redelivery*, never loss; idempotent writes make redelivery harmless. No exactly-once machinery needed.
 
-## Broker restart — not yet run
+## Broker restart — the most instructive test
 
-Planned: restart Redpanda mid-burst; expect ingest 5xx during outage (producer acks=all fails fast), full recovery after; orders accepted before/after unaffected. TODO in a future session.
+Setup: 3 VUs constant for 90s; Redpanda container stopped hard at t+20s, restarted at t+45s (25s total outage).
+
+**First finding (before the test even ran):** designing it exposed that the ingest controller published without awaiting the broker ack — during an outage it would have kept returning 202 for orders sitting in a client-side buffer that expire after `delivery.timeout.ms`. A 202 must mean durable. Fixed: `send(...).get(5s)` before responding, with timeouts surfacing as **503 retry** instead of a hung connection or a false 202.
+
+**Observed with the fix:**
+
+- 12,273 orders got a 202; 15 requests failed during the outage — exactly 3 VUs × 5s-timeout cycles across 25s. Throughput paused instead of lying; recovery was immediate on broker restart.
+- **Second finding:** final row count was **12,288 — fifteen MORE rows than 202s.** The 15 timed-out requests were *indeterminate*, not failed: their records sat in the producer buffer and flushed successfully after recovery. The client was told 503; the order still exists. A customer who retried would have ordered twice.
+
+**Fix for the indeterminacy:** client-supplied `Idempotency-Key` header. When present (validated `[A-Za-z0-9_-]{8,64}`), the key *is* the order id, so a retry lands on the same primary key and `ON CONFLICT DO NOTHING` absorbs it. Verified: two identical POSTs with one key → same id returned twice → exactly 1 row.
+
+The takeaway worth repeating in interviews: **a timeout is not a failure — it's an unknown.** You can't make the unknown go away; you can only make retries safe. That's why idempotency keys exist at every serious payment/order API (Stripe's is the canonical example).
 
 ## Known limits of these numbers
 

@@ -54,3 +54,11 @@
 - Same k6 baseline rerun: 421,676 orders accepted (~4,774/s), ingest p95 improved slightly, and persistence KEPT PACE with ingest - zero backlog at first poll after load ended (v1 needed ~9.5 min drain at ~500/s). Zero loss/dupes again.
 - Before/after table added to FAILURE_MODES.md; README updated. Note: batch listener means one consumer span per batch, not per record.
 - Remaining: broker-restart test, M4 dashboard, M5 Azure.
+
+### 2026-07-06 - broker-restart chaos + two real fixes
+
+- Designing the test exposed fire-and-forget publish: 202 before broker ack = potential silent loss past delivery.timeout.ms. Fixed with send().get(5s) + 503 handler (bounded wait, honest failure).
+- Ran it: 25s hard broker outage under 3-VU load. 12,273 202s, 15 timeouts (3 VUs x 5s cycles), instant recovery - but 12,288 rows: the 15 timed-out orders flushed from the producer buffer after recovery. Timeout = indeterminate, not failed.
+- Fixed the retry hazard with Idempotency-Key header (key becomes order id -> ON CONFLICT absorbs retries). Verified: same key twice -> 1 row.
+- FAILURE_MODES.md broker section written. Ingest restarted via Start-Process (background gradle task env got stopped) - kill stray java processes when done.
+- Remaining: M4 dashboard, M5 Azure.
