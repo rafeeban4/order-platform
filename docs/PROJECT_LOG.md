@@ -62,3 +62,10 @@
 - Fixed the retry hazard with Idempotency-Key header (key becomes order id -> ON CONFLICT absorbs retries). Verified: same key twice -> 1 row.
 - FAILURE_MODES.md broker section written. Ingest restarted via Start-Process (background gradle task env got stopped) - kill stray java processes when done.
 - Remaining: M4 dashboard, M5 Azure.
+
+### 2026-07-06 (later) - M4 COMPLETE: live dashboard
+
+- order-worker now serves a live ops dashboard at :8082/ - raw WebSocket at /ws (TextWebSocketHandler, fire-and-forget broadcast AFTER the JDBC batch commits, so the screen only shows durable orders; slow/dead sockets get dropped, never block persistence), REST backfill (/orders/recent, /orders/stats), static mono-terminal page (vanilla JS, no build step; DOM capped at 60 rows + 5 prepends/batch so load tests can't melt it).
+- Verified in a real browser: WS connects, 30-row backfill, then 20 POSTed orders appeared live without reload (session counter 20, last-60s stat 20, screenshot taken).
+- Preview harness config added at repo and workspace .claude/launch.json (name order-dashboard, cmd /c .\\gradlew.bat).
+- Remaining: M5 Azure Container Apps deploy + portfolio card + writeup.

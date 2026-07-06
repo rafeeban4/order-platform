@@ -6,7 +6,8 @@ plugins {
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
-    implementation 'org.springframework.boot:spring-boot-starter-web' // actuator port + future status API
+    implementation 'org.springframework.boot:spring-boot-starter-web' // actuator + dashboard REST + static page
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
     implementation 'org.springframework.kafka:spring-kafka'
     implementation 'io.micrometer:micrometer-tracing-bridge-otel'
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp'

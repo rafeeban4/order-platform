@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "order-dashboard",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "gradlew.bat", ":order-worker:bootRun", "--console=plain"],
+      "cwd": "C:\\Users\\Rafee\\Documents\\CLAUDE\\order-platform",
+      "port": 8082
+    }
+  ]
+}

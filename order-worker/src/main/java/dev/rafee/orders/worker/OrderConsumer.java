@@ -37,10 +37,12 @@ public class OrderConsumer {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper;
+    private final DashboardWebSocket dashboard;
 
-    public OrderConsumer(JdbcTemplate jdbc, ObjectMapper mapper) {
+    public OrderConsumer(JdbcTemplate jdbc, ObjectMapper mapper, DashboardWebSocket dashboard) {
         this.jdbc = jdbc;
         this.mapper = mapper;
+        this.dashboard = dashboard;
     }
 
     @KafkaListener(topics = "orders.v1", groupId = "order-workers", batch = "true")
@@ -65,5 +67,7 @@ public class OrderConsumer {
         if (duplicates > 0) {
             log.info("batch of {}: {} duplicate deliveries ignored", rows.size(), duplicates);
         }
+        // After the batch commits: the dashboard shows durable orders only.
+        dashboard.broadcast("[" + String.join(",", messages) + "]");
     }
 }

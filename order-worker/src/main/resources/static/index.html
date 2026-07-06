@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>order-platform — live feed</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --line:#2d333b; --text:#e6edf3; --dim:#8b949e; --accent:#e3b341; --ok:#3fb950; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:ui-monospace,Consolas,monospace; }
+  header { display:flex; justify-content:space-between; align-items:baseline; padding:16px 24px; border-bottom:1px solid var(--line); }
+  h1 { font-size:15px; margin:0; letter-spacing:.06em; }
+  #conn { font-size:12px; color:var(--dim); }
+  #conn.live { color:var(--ok); }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; padding:16px 24px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px 16px; }
+  .stat .label { font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:var(--dim); }
+  .stat .value { font-size:26px; margin-top:4px; color:var(--accent); }
+  table { width:calc(100% - 48px); margin:8px 24px 24px; border-collapse:collapse; font-size:12.5px; }
+  th { text-align:left; color:var(--dim); font-weight:500; padding:6px 10px; border-bottom:1px solid var(--line); font-size:10px; text-transform:uppercase; letter-spacing:.1em; }
+  td { padding:6px 10px; border-bottom:1px solid var(--line); }
+  tr.fresh { animation: flash 1.2s ease-out; }
+  @keyframes flash { from { background:rgba(227,179,65,.25); } to { background:transparent; } }
+  td.total { text-align:right; color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>ORDER-PLATFORM · LIVE FEED</h1>
+  <span id="conn">connecting…</span>
+</header>
+<div class="stats">
+  <div class="stat"><div class="label">Orders (all time)</div><div class="value" id="s-total">–</div></div>
+  <div class="stat"><div class="label">Revenue (all time)</div><div class="value" id="s-rev">–</div></div>
+  <div class="stat"><div class="label">Last 60s</div><div class="value" id="s-min">–</div></div>
+  <div class="stat"><div class="label">Live this session</div><div class="value" id="s-live">0</div></div>
+</div>
+<table>
+  <thead><tr><th>ID</th><th>Store</th><th>Customer</th><th>Total</th></tr></thead>
+  <tbody id="feed"></tbody>
+</table>
+<script>
+const feed = document.getElementById("feed");
+const conn = document.getElementById("conn");
+const $ = (id) => document.getElementById(id);
+const money = (c) => "$" + (c / 100).toFixed(2);
+let live = 0;
+
+function row(o, fresh) {
+  const tr = document.createElement("tr");
+  if (fresh) tr.className = "fresh";
+  const name = o.customer_name ?? (o.customer && o.customer.name) ?? "";
+  const total = o.total_cents ?? o.totalCents ?? 0;
+  tr.innerHTML = `<td>${o.id}</td><td>${o.store_id ?? o.storeId}</td><td>${name}</td><td class="total">${money(total)}</td>`;
+  return tr;
+}
+
+async function refreshStats() {
+  const s = await (await fetch("/orders/stats")).json();
+  $("s-total").textContent = Number(s.total_orders).toLocaleString();
+  $("s-rev").textContent = money(Number(s.total_cents));
+  $("s-min").textContent = Number(s.last_minute).toLocaleString();
+}
+
+async function backfill() {
+  const recent = await (await fetch("/orders/recent?limit=30")).json();
+  feed.replaceChildren(...recent.map((o) => row(o, false)));
+}
+
+function connect() {
+  const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
+  ws.onopen = () => { conn.textContent = "● live"; conn.className = "live"; };
+  ws.onclose = () => { conn.textContent = "reconnecting…"; conn.className = ""; setTimeout(connect, 2000); };
+  ws.onmessage = (e) => {
+    const batch = JSON.parse(e.data);
+    live += batch.length;
+    $("s-live").textContent = live.toLocaleString();
+    // Prepend at most a handful per batch so a load test doesn't melt the DOM
+    for (const o of batch.slice(0, 5)) feed.prepend(row(o, true));
+    while (feed.children.length > 60) feed.lastChild.remove();
+  };
+}
+
+backfill().then(refreshStats);
+setInterval(refreshStats, 5000);
+connect();
+</script>
+</body>
+</html>
